@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ActionFilterSample": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

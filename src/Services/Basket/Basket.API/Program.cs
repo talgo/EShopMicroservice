@@ -1,11 +1,15 @@
+using Discount.Grpc;
 using HealthChecks.UI.Client;
 
 var builder = WebApplication.CreateBuilder(args);
 var postgresqlConnectionString = builder.Configuration.GetConnectionString("Database")!;
 
 // Add services to the container
+
+// Application Services
 var assembly = typeof(Program).Assembly;
 
+builder.Services.AddCarter();
 builder.Services.AddMediatR(config =>
 {
     config.RegisterServicesFromAssemblies(assembly);
@@ -13,9 +17,7 @@ builder.Services.AddMediatR(config =>
     config.AddOpenBehavior(typeof(LoggingBehavior<,>));
 });
 
-builder.Services.AddValidatorsFromAssembly(assembly);
-builder.Services.AddCarter();
-builder.Services.AddExceptionHandler<CustomExceptionHandler>();
+// Data Service
 builder.Services.AddMarten(opts =>
 {
     opts.Connection(postgresqlConnectionString);
@@ -25,11 +27,6 @@ builder.Services.AddMarten(opts =>
 
 builder.Services.AddScoped<IBasketRepository, BasketRepository>();
 builder.Services.Decorate<IBasketRepository, CachedBasketRepository>();
-//builder.Services.AddScoped<IBasketRepository>(provider =>
-//{
-//    var basketRepository = provider.GetRequiredService<BasketRepository>();
-//    return new CachedBasketRepository(basketRepository, provider.GetRequiredService<IDistributedCache>());
-//});
 
 builder.Services.AddStackExchangeRedisCache(options =>
 {
@@ -37,9 +34,35 @@ builder.Services.AddStackExchangeRedisCache(options =>
     //options.InstanceName = "Basket";
 });
 
+// Grpc Services
+builder.Services.AddGrpcClient<DiscountProtoService.DiscountProtoServiceClient>(option =>
+{
+    option.Address = new Uri(builder.Configuration.GetConnectionString("DiscountUrl"));
+    //option.Address = new Uri(builder.Configuration["ConnectionStrings:DiscountUrl"]!);
+})
+.ConfigurePrimaryHttpMessageHandler(() =>
+{
+    var handler = new HttpClientHandler
+    {
+        ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+    };
+
+    return handler;
+});
+
+// Cross-Cutting Services
 builder.Services.AddHealthChecks()
     .AddNpgSql(builder.Configuration.GetConnectionString("Database")!)
     .AddRedis(builder.Configuration.GetConnectionString("Redis")!);
+
+builder.Services.AddValidatorsFromAssembly(assembly);
+builder.Services.AddExceptionHandler<CustomExceptionHandler>();
+
+//builder.Services.AddScoped<IBasketRepository>(provider =>
+//{
+//    var basketRepository = provider.GetRequiredService<BasketRepository>();
+//    return new CachedBasketRepository(basketRepository, provider.GetRequiredService<IDistributedCache>());
+//});
 
 var app = builder.Build();
 
